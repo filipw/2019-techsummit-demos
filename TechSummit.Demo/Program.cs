@@ -40,17 +40,19 @@ namespace TechSummit.Demo
                 var cosmosDbConfig = ConfigurationBinder.Get<CosmosDbConfig>(Configuration.GetSection("CosmosDb"));
                 s.AddSingleton(cosmosDbConfig);
 
-                var client = new DocumentClient(new Uri(cosmosDbConfig.Endpoint), cosmosDbConfig.Key, new ConnectionPolicy());
+                var connectionPolicy = new ConnectionPolicy();
                 if (cosmosDbConfig.PreferredLocations != null && cosmosDbConfig.PreferredLocations.Any())
                 {
                     foreach (var location in cosmosDbConfig.PreferredLocations)
                     {
                         if (AllowedLocations.Contains(location))
                         {
-                            client.ConnectionPolicy.PreferredLocations.Add(location);
+                            connectionPolicy.PreferredLocations.Add(location);
                         }
                     }
                 }
+
+                var client = new DocumentClient(new Uri(cosmosDbConfig.Endpoint), cosmosDbConfig.Key, connectionPolicy);
 
                 s.AddSingleton(client);
             }).
@@ -83,6 +85,18 @@ namespace TechSummit.Demo
                         }
 
                         await res.HttpContext.Ok(entities);
+                    });
+
+                    r.MapPost("books", async (req, res, routeData) =>
+                    {
+                        var book = req.HttpContext.ReadFromJson<Book>();
+                        var client = req.HttpContext.RequestServices.GetRequiredService<DocumentClient>();
+                        var cosmosDbConfig = req.HttpContext.RequestServices.GetRequiredService<CosmosDbConfig>();
+
+                        var collection = UriFactory.CreateDocumentCollectionUri(cosmosDbConfig.DbName, cosmosDbConfig.CollectionName);
+
+                        var document = await client.CreateDocumentAsync(collection, book);
+                        await res.HttpContext.Accepted();
                     });
                 });
             });

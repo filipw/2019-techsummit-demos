@@ -9,6 +9,6 @@ namespace TechSummit.Demo
         public string DbName { get; set; }
         public string CollectionName { get; set; }
         public bool IsPartitioningEnabled { get; set; } = true;
-        public HashSet<string> PreferredLocations { get; set; } = new HashSet<string> { "West Europe" };
+        public HashSet<string> PreferredLocations { get; set; }
     }
 }
