@@ -1,17 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Azure.Documents;
 using Microsoft.Azure.Documents.Client;
-using Microsoft.Azure.Documents.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using WebApiContrib.Core.Results;
 
 namespace TechSummit.Demo
 {
@@ -34,77 +30,35 @@ namespace TechSummit.Demo
             }).
             ConfigureServices(s =>
             {
-                s.AddMvcCore().AddJsonFormatters();
-                s.AddRouting();
+                s.AddMvc();
 
                 var cosmosDbConfig = ConfigurationBinder.Get<CosmosDbConfig>(Configuration.GetSection("CosmosDb"));
                 s.AddSingleton(cosmosDbConfig);
 
-                var connectionPolicy = new ConnectionPolicy();
-                if (cosmosDbConfig.PreferredLocations != null && cosmosDbConfig.PreferredLocations.Any())
+                var connectionPolicy = new ConnectionPolicy
                 {
+                    ConnectionMode = ConnectionMode.Direct,
+                    ConnectionProtocol = Protocol.Tcp,
+                    UseMultipleWriteLocations = true
+                };
+                if (cosmosDbConfig.PreferredLocations != null && cosmosDbConfig.PreferredLocations.Any() && cosmosDbConfig.PreferredLocations.All(l => AllowedLocations.Contains(l)))
+                {
+                    connectionPolicy.SetCurrentLocation(cosmosDbConfig.PreferredLocations.First());
                     foreach (var location in cosmosDbConfig.PreferredLocations)
                     {
-                        if (AllowedLocations.Contains(location))
-                        {
-                            connectionPolicy.PreferredLocations.Add(location);
-                        }
+                        connectionPolicy.PreferredLocations.Add(location);
                     }
                 }
 
                 var client = new DocumentClient(new Uri(cosmosDbConfig.Endpoint), cosmosDbConfig.Key, connectionPolicy);
+                client.OpenAsync().GetAwaiter().GetResult();
 
                 s.AddSingleton(client);
             }).
             Configure(app =>
             {
                 app.UseHttpsRedirection();
-
-                app.UseRouter(r =>
-                {
-                    r.MapGet("heartbeat", async (req, res, routeData) =>
-                    {
-                        await res.HttpContext.StatusCode(200);
-                    });
-
-                    r.MapGet("books", async (req, res, routeData) =>
-                    {
-                        var client = req.HttpContext.RequestServices.GetRequiredService<DocumentClient>();
-                        var cosmosDbConfig = req.HttpContext.RequestServices.GetRequiredService<CosmosDbConfig>();
-
-                        var collection = UriFactory.CreateDocumentCollectionUri(cosmosDbConfig.DbName, cosmosDbConfig.CollectionName);
-
-                        var query = client.CreateDocumentQuery(collection).AsDocumentQuery();
-                        var entities = new List<Book>();
-                        while (query.HasMoreResults)
-                        {
-                            foreach (var entity in await query.ExecuteNextAsync<Book>())
-                            {
-                                entities.Add(entity);
-                            }
-                        }
-
-                        await res.HttpContext.Ok(entities);
-                    });
-
-                    r.MapPost("books", async (req, res, routeData) =>
-                    {
-                        var book = req.HttpContext.ReadFromJson<Book>();
-                        var client = req.HttpContext.RequestServices.GetRequiredService<DocumentClient>();
-                        var cosmosDbConfig = req.HttpContext.RequestServices.GetRequiredService<CosmosDbConfig>();
-
-                        var collection = UriFactory.CreateDocumentCollectionUri(cosmosDbConfig.DbName, cosmosDbConfig.CollectionName);
-
-                        var document = await client.CreateDocumentAsync(collection, book);
-                        await res.HttpContext.Accepted();
-                    });
-                });
+                app.UseMvc();
             });
-    }
-
-    public class Book
-    {
-        public string Title { get; set; }
-        public string Author { get; set; }
     }
 }
