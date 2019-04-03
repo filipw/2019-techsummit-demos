@@ -24,6 +24,7 @@ namespace TechSummit.Demo
 
         public static IWebHostBuilder CreateWebHostBuilder(string[] args) =>
             WebHost.CreateDefaultBuilder(args).
+            UseApplicationInsights().
             ConfigureAppConfiguration((hostingContext, config) =>
             {
                 Configuration = config.Build();
@@ -32,6 +33,7 @@ namespace TechSummit.Demo
             {
                 s.AddMvc();
 
+                #region CosmosDB
                 var cosmosDbConfig = ConfigurationBinder.Get<CosmosDbConfig>(Configuration.GetSection("CosmosDb"));
                 s.AddSingleton(cosmosDbConfig);
 
@@ -43,7 +45,10 @@ namespace TechSummit.Demo
                 };
                 if (cosmosDbConfig.PreferredLocations != null && cosmosDbConfig.PreferredLocations.Any() && cosmosDbConfig.PreferredLocations.All(l => AllowedLocations.Contains(l)))
                 {
+                    // write
                     connectionPolicy.SetCurrentLocation(cosmosDbConfig.PreferredLocations.First());
+
+                    // read
                     foreach (var location in cosmosDbConfig.PreferredLocations)
                     {
                         connectionPolicy.PreferredLocations.Add(location);
@@ -54,6 +59,7 @@ namespace TechSummit.Demo
                 client.OpenAsync().GetAwaiter().GetResult();
 
                 s.AddSingleton(client);
+                #endregion
             }).
             Configure(app =>
             {
